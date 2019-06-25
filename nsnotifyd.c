@@ -81,6 +81,8 @@ version(void) {
 #endif
 
 static bool quit;
+static bool soa_check = true;
+
 
 static void
 sigexit(int dummy) {
@@ -375,22 +377,27 @@ zone_retry(zone *z) {
 static void
 zone_refresh(zone *zp, const char *cmd, const char *master) {
 	zone z = *zp; // only update *zp if the refresh succeeds
-	const char *e = zone_soa(&z);
-	if(e != NULL) {
-		log_err("%s IN SOA ? %s", z.name, e);
-		zone_retry(zp);
-		return;
-	}
-	if(zp->serial == 0 && zp->refresh == 0 && zp->retry == 0) {
-		log_info("%s IN SOA %d wildcard; running %s",
-		    z.name, z.serial, cmd);
-	} else if (serial_lt(zp->serial, z.serial)) {
-		log_info("%s IN SOA %d updated; running %s",
-		    z.name, z.serial, cmd);
+	if( soa_check ) {
+		const char *e = zone_soa(&z);
+		if(e != NULL) {
+			log_err("%s IN SOA ? %s", z.name, e);
+			zone_retry(zp);
+			return;
+		}
+		if(zp->serial == 0 && zp->refresh == 0 && zp->retry == 0) {
+			log_info("%s IN SOA %d wildcard; running %s",
+			    z.name, z.serial, cmd);
+		} else if (serial_lt(zp->serial, z.serial)) {
+			log_info("%s IN SOA %d updated; running %s",
+			    z.name, z.serial, cmd);
+		} else {
+			log_info("%s IN SOA %d unchanged", z.name, z.serial);
+			*zp = z; // refresh later
+			return;
+		}
 	} else {
-		log_info("%s IN SOA %d unchanged", z.name, z.serial);
-		*zp = z; // refresh later
-		return;
+		log_info("%s running %s",
+			    z.name, cmd);
 	}
 	switch(fork()) {
 	case(-1):
@@ -443,6 +450,7 @@ usage(void) {
 "	-P pidfile	write daemon pid to this file\n"
 "	-p port		listen on this port number or service name\n"
 "			(default 53)\n"
+"	-S		disable the SOA serial checks\n"
 "	-R min:max	limit SOA refresh times (default %d:%d)\n"
 "	-r min:max	limit SOA retry times (default %d:%d)\n"
 "	-s addr		authoritative server for refresh queries\n"
@@ -470,7 +478,7 @@ main(int argc, char *argv[]) {
 	char *cmd = NULL;
 	int debug = 0;
 
-	while((r = getopt(argc, argv, "46a:dl:P:p:R:r:s:u:Vw")) != -1)
+	while((r = getopt(argc, argv, "46a:dl:P:p:SR:r:s:u:Vw")) != -1)
 		switch(r) {
 		case('4'):
 			family = PF_INET;
@@ -497,6 +505,9 @@ main(int argc, char *argv[]) {
 			continue;
 		case('p'):
 			port = optarg;
+			continue;
+		case('S'):
+			soa_check = false;
 			continue;
 		case('R'):
 			ttl_pair(optarg, &refresh_min, &refresh_max);
@@ -674,7 +685,8 @@ main(int argc, char *argv[]) {
 		// so it needs some work...
 
 		log_info("%s notify from %s", z->name, sockstr(sa, sa_len));
-		soa_server_addr(sa, sa_len);
+		if( soa_check )
+			soa_server_addr(sa, sa_len);
 		zone_refresh(z, cmd, addrstr(sa, sa_len));
 
 		// build the reply mostly by echoing the query up to

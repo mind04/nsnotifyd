@@ -6,7 +6,7 @@
 .Nd handle DNS NOTIFY messages by running a command
 .Sh SYNOPSIS
 .Nm
-.Op Fl 46dVw
+.Op Fl 46dSVw
 .Op Fl l Ar facility
 .Op Fl P Ar pidfile
 .Op Fl u Ar user
@@ -126,6 +126,8 @@ to be between
 .Ar min
 and
 .Ar max .
+.It Fl S
+Disable the SOA serial checks
 .It Fl s Ar authority
 Specify an authoritative server to
 use for zone SOA refresh queries.
